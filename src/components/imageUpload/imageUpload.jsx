@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import Draggable from 'react-draggable';
+import { Resizable } from 're-resizable'; // Import resizable component
+import { MdRotateRight } from 'react-icons/md'; // Import rotation icon
 
 const ImageUpload = () => {
     const [items, setItems] = useState([]);
     const [text, setText] = useState('');
+    const [selectedItemId, setSelectedItemId] = useState(null); // State to store the ID of the selected item
     const [screenWidth, setScreenWidth] = useState(window.innerWidth);
     const [screenHeight, setScreenHeight] = useState(window.innerHeight);
 
@@ -25,7 +27,7 @@ const ImageUpload = () => {
         const newItems = files.map(file => {
             const reader = new FileReader();
             const id = Date.now() + Math.random();
-            const newItem = { id, type: 'image', file, url: '', position: { x: 0, y: 0 } };
+            const newItem = { id, type: 'image', file, url: '', position: { x: 0, y: 0 }, width: 0, height: 0, rotation: 0 };
 
             reader.onloadend = () => {
                 setItems(prevItems => prevItems.map(item => item.id === id ? { ...item, url: reader.result } : item));
@@ -50,19 +52,66 @@ const ImageUpload = () => {
         setText('');
     };
 
-    const handleDrag = (id, e, ui) => {
-        const { x, y } = ui;
-        const xPercentage = (x / screenWidth) * 100;
-        const yPercentage = (y / screenHeight) * 100;
-        setItems(prevItems => prevItems.map(item => item.id === id ? { ...item, position: { x: xPercentage, y: yPercentage } } : item));
+    const handleDragStart = (e, id) => {
+        e.dataTransfer.setData('id', id);
+    };
+
+    const handleDrop = (e) => {
+        e.preventDefault();
+        const id = e.dataTransfer.getData('id');
+        const { clientX, clientY } = e;
+        const xPercentage = (clientX / screenWidth) * 100;
+        const yPercentage = (clientY / screenHeight) * 100;
+        setItems(prevItems => prevItems.map(item => item.id === id ? { ...item, position: { x: xPercentage, y: yPercentage }, isDragging: false } : item));
+    };
+
+    const handleDragOver = (e) => {
+        e.preventDefault();
+    };
+
+    const handleHover = (id) => {
+        setItems(prevItems => prevItems.map(item => item.id === id ? { ...item, zoomed: true } : item));
+    };
+
+    const handleLeave = (id) => {
+        setItems(prevItems => prevItems.map(item => item.id === id ? { ...item, zoomed: false } : item));
+    };
+
+    const handleDrag = (id, e) => {
+        e.preventDefault();
+        const { clientX, clientY } = e;
+        const xPercentage = (clientX / screenWidth) * 100;
+        const yPercentage = (clientY / screenHeight) * 100;
+        setItems(prevItems => prevItems.map(item => item.id === id ? { ...item, position: { x: xPercentage, y: yPercentage }, isDragging: true } : item));
+    };
+
+    const handleResize = (id, direction, styleSize, clientSize, delta) => {
+        setItems(prevItems =>
+            prevItems.map(item =>
+                item.id === id ? { ...item, width: `${styleSize.width}`, height: `${styleSize.height}` } : item
+            )
+        );
+    };
+    
+    const handleRotate = (id) => {
+        setItems(prevItems =>
+            prevItems.map(item =>
+                item.id === id ? { ...item, rotation: item.rotation + 90 } : item
+            )
+        );
+    };
+
+    const handleSelectItem = (id) => {
+        setSelectedItemId(id); // Update the selected item ID
     };
 
     const handleSubmit = () => {
-        console.log("Item positions relative to the screen size:");
+        console.log("Item dimensions, positions, and rotation:");
         items.forEach(item => {
-            console.log(`Item ID: ${item.id}, Type: ${item.type}, Position: X: ${item.position.x}%, Y: ${item.position.y}%`);
+            console.log(`Item ID: ${item.id}, Type: ${item.type}, Width: ${item.width}px, Height: ${item.height}px, Position: X: ${item.position.x}%, Y: ${item.position.y}%, Rotation: ${item.rotation}deg`);
         });
     };
+    
 
     return (
         <div>
@@ -92,29 +141,55 @@ const ImageUpload = () => {
             </form>
             <div>
                 {items.map(item => (
-                    <Draggable key={item.id} onDrag={(e, ui) => handleDrag(item.id, e, ui)}>
+                    <div
+                        key={item.id}
+                        draggable
+                        onDragStart={(e) => handleDragStart(e, item.id)}
+                        onDrag={e => handleDrag(item.id, e)}
+                        onDragEnd={() => setItems(prevItems => prevItems.map(prevItem => ({ ...prevItem, isDragging: false })))}
+                        onDrop={handleDrop}
+                        onDragOver={handleDragOver}
+                        onMouseEnter={() => handleHover(item.id)}
+                        onMouseLeave={() => handleLeave(item.id)}
+                        onClick={() => handleSelectItem(item.id)} // Add onClick to handle item selection
+                        style={{
+                            position: 'absolute',
+                            left: `${item.position.x}%`,
+                            top: `${item.position.y}%`,
+                            cursor: 'move',
+                            padding: '10px',
+                            background: 'lightgrey',
+                            borderRadius: '5px',
+                            transform: `translate(-50%, -50%) rotate(${item.rotation}deg)`, // Rotate item
+                            border: item.isDragging ? '2px dashed blue' : (item.id === selectedItemId ? '2px solid red' : 'none'), // Highlight selected item
+                            zIndex: item.id === selectedItemId ? 1 : 'auto' // Bring selected item to the top
+                        }}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onMouseUp={(e) => e.stopPropagation()}
+                    >
                         {item.type === 'image' ? (
-                            <img
-                                src={item.url}
-                                alt="Preview"
-                                style={{ marginTop: '20px', maxWidth: '100%', cursor: 'move', position: 'absolute', left: `${item.position.x}%`, top: `${item.position.y}%` }}
-                            />
-                        ) : (
-                            <div
-                                style={{
-                                    position: 'absolute',
-                                    left: `${item.position.x}%`,
-                                    top: `${item.position.y}%`,
-                                    cursor: 'move',
-                                    padding: '10px',
-                                    background: 'lightgrey',
-                                    borderRadius: '5px'
-                                }}
+                            <Resizable
+                                defaultSize={{ width: 200, height: 200 }}
+                                style={{ width: '100%', height: '100%' }}
+                                onResize={(e, direction, styleSize, clientSize, delta) =>
+                                    handleResize(item.id, direction, styleSize, clientSize, delta)
+                                }
                             >
-                                {item.content}
-                            </div>
+                                <img
+                                    src={item.url}
+                                    alt="Preview"
+                                    style={{ width: '100%', height: '100%', cursor: 'move' }}
+                                />
+                            </Resizable>
+                        ) : (
+                            <div style={{ width: '100%', height: '100%', cursor: 'move', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{item.content}</div>
                         )}
-                    </Draggable>
+                        <MdRotateRight
+                            style={{ position: 'absolute', right: '5px', bottom: '5px', cursor: 'pointer' }}
+                            size={20}
+                            onClick={() => handleRotate(item.id)}
+                        />
+                    </div>
                 ))}
             </div>
         </div>
